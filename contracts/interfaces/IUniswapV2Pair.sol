@@ -23,16 +23,24 @@ interface IUniswapV2Pair {
 
     event Mint(address indexed sender, uint amount);
     event Burn(address indexed sender, uint amount, address indexed to);
+    event FlashLoan(
+        address indexed target,
+        address indexed initiator,
+        address indexed asset,
+        uint256 amount,
+        uint256 premium
+    );
     event Sync(uint112 reserve);
 
     function MINIMUM_LIQUIDITY() external pure returns (uint);
     function factory() external view returns (address);
     function token() external view returns (address);
-    function getReserves() external view returns (uint112 reserve);
+    function reserve() external view returns (uint);
     function kLast() external view returns (uint);
 
     function mint(address to) external returns (uint liquidity);
     function burn(address to) external returns (uint amount);
+    function flashLoan(address target, uint256 amount, bytes calldata data) external;
     function skim(address to) external;
     function sync() external;
 

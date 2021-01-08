@@ -4,6 +4,7 @@ import './interfaces/IUniswapV2Factory.sol';
 import './UniswapV2Pair.sol';
 
 contract UniswapV2Factory is IUniswapV2Factory {
+    uint public feeInBips = 5;
     address public feeTo;
     address public feeToSetter;
 
@@ -32,6 +33,11 @@ contract UniswapV2Factory is IUniswapV2Factory {
         getPair[token] = pair;
         allPairs.push(pair);
         emit PairCreated(token, pair, allPairs.length);
+    }
+
+    function setFeeInBips(uint _feeInBips) external {
+        require(msg.sender == feeToSetter, 'UniswapV2: FORBIDDEN');
+        feeInBips = _feeInBips;
     }
 
     function setFeeTo(address _feeTo) external {

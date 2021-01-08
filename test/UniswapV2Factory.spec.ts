@@ -31,7 +31,8 @@ describe('UniswapV2Factory', () => {
     factory = fixture.factory
   })
 
-  it('feeTo, feeToSetter, allPairsLength', async () => {
+  it('feeInBips, feeTo, feeToSetter, allPairsLength', async () => {
+    expect(await factory.feeInBips()).to.eq(5)
     expect(await factory.feeTo()).to.eq(AddressZero)
     expect(await factory.feeToSetter()).to.eq(wallet.address)
     expect(await factory.allPairsLength()).to.eq(0)
@@ -69,6 +70,12 @@ describe('UniswapV2Factory', () => {
     const tx = await factory.createPair(...TEST_ADDRESSES)
     const receipt = await tx.wait()
     expect(receipt.gasUsed).to.eq(2512920)
+  })
+
+  it('setFeeInBips', async () => {
+    await expect(factory.connect(other).setFeeInBips(1)).to.be.revertedWith('UniswapV2: FORBIDDEN')
+    await factory.setFeeInBips(2)
+    expect(await factory.feeInBips()).to.eq(2)
   })
 
   it('setFeeTo', async () => {

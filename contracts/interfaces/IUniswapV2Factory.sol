@@ -3,6 +3,7 @@ pragma solidity >=0.5.0;
 interface IUniswapV2Factory {
     event PairCreated(address indexed token, address pair, uint);
 
+    function feeInBips() external view returns (uint);
     function feeTo() external view returns (address);
     function feeToSetter() external view returns (address);
 
