@@ -1,14 +1,14 @@
 pragma solidity =0.5.16;
 
-import './interfaces/IUniswapV2Pair.sol';
-import './UniswapV2ERC20.sol';
+import './interfaces/IFlashLoanV1Pool.sol';
+import './FlashLoanV1ERC20.sol';
 import './libraries/Math.sol';
 import './libraries/UQ112x112.sol';
 import './interfaces/IERC20.sol';
-import './interfaces/IUniswapV2Factory.sol';
+import './interfaces/IFlashLoanV1Factory.sol';
 import './interfaces/IFlashLoanReceiver.sol';
 
-contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
+contract FlashLoanV1Pool is IFlashLoanV1Pool, FlashLoanV1ERC20 {
     using SafeMath  for uint;
     using UQ112x112 for uint224;
 
@@ -24,7 +24,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
 
     uint private unlocked = 1;
     modifier lock() {
-        require(unlocked == 1, 'UniswapV2: LOCKED');
+        require(unlocked == 1, 'FlashLoanV1: LOCKED');
         unlocked = 0;
         _;
         unlocked = 1;
@@ -32,7 +32,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
 
     function _safeTransfer(address _token, address to, uint value) private {
         (bool success, bytes memory data) = _token.call(abi.encodeWithSelector(SELECTOR, to, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), 'UniswapV2: TRANSFER_FAILED');
+        require(success && (data.length == 0 || abi.decode(data, (bool))), 'FlashLoanV1: TRANSFER_FAILED');
     }
 
     event Mint(address indexed sender, uint amount);
@@ -52,20 +52,20 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
 
     // called once by the factory at time of deployment
     function initialize(address _token) external {
-        require(msg.sender == factory, 'UniswapV2: FORBIDDEN'); // sufficient check
+        require(msg.sender == factory, 'FlashLoanV1: FORBIDDEN'); // sufficient check
         token = _token;
     }
 
     // update reserves and, on the first call per block, price accumulators
     function _update(uint balance) private {
-        require(balance <= uint112(-1), 'UniswapV2: OVERFLOW');
+        require(balance <= uint112(-1), 'FlashLoanV1: OVERFLOW');
         reserve = uint112(balance);
         emit Sync(reserve);
     }
 
     // if fee is on, mint liquidity equivalent to 1/6th of the growth
     function _mintFee(uint k) private returns (bool feeOn) {
-        address feeTo = IUniswapV2Factory(factory).feeTo();
+        address feeTo = IFlashLoanV1Factory(factory).feeTo();
         feeOn = feeTo != address(0);
         uint _kLast = kLast; // gas savings
         if (feeOn) {
@@ -96,7 +96,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         } else {
             liquidity = amount.mul(_totalSupply) / reserve;
         }
-        require(liquidity > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_MINTED');
+        require(liquidity > 0, 'FlashLoanV1: INSUFFICIENT_LIQUIDITY_MINTED');
         _mint(to, liquidity);
 
         _update(balance);
@@ -114,7 +114,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         bool feeOn = _mintFee(_reserve);
         uint _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         amount = liquidity.mul(balance) / _totalSupply; // using balances ensures pro-rata distribution
-        require(amount > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED');
+        require(amount > 0, 'FlashLoanV1: INSUFFICIENT_LIQUIDITY_BURNED');
         _burn(address(this), liquidity);
         _safeTransfer(_token, to, amount);
         balance = IERC20(_token).balanceOf(address(this));
@@ -125,24 +125,24 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function flashLoan(address target, uint256 amount, bytes calldata params) external lock {
+    function flashLoan(address target, uint256 amount, bytes calldata data) external lock {
         address _token = token; // gas savings
-        require(amount > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_TO_BORROW');
+        require(amount > 0, 'FlashLoanV1: INSUFFICIENT_LIQUIDITY_TO_BORROW');
 
         uint256 balanceBefore = IERC20(_token).balanceOf(address(this));
-        require(balanceBefore >= amount, 'UniswapV2: INSUFFICIENT_LIQUIDITY_TO_BORROW');
+        require(balanceBefore >= amount, 'FlashLoanV1: INSUFFICIENT_LIQUIDITY_TO_BORROW');
 
-        uint256 feeInBips = IUniswapV2Factory(factory).feeInBips();
+        uint256 feeInBips = IFlashLoanV1Factory(factory).feeInBips();
         uint256 amountFee = amount.mul(feeInBips) / 10000;
-        require(amountFee > 0, 'UniswapV2: AMOUNT_TOO_SMALL');
+        require(amountFee > 0, 'FlashLoanV1: AMOUNT_TOO_SMALL');
 
         _safeTransfer(_token, target, amount);
 
         IFlashLoanReceiver receiver = IFlashLoanReceiver(target);
-        receiver.executeOperation(_token, amount, amountFee, msg.sender, params);
+        receiver.executeOperation(_token, amount, amountFee, msg.sender, data);
 
         uint256 balanceAfter = IERC20(_token).balanceOf(address(this));
-        require(balanceAfter == balanceBefore.add(amountFee), 'UniswapV2: AMOUNT_INCONSISTENT');
+        require(balanceAfter == balanceBefore.add(amountFee), 'FlashLoanV1: AMOUNT_INCONSISTENT');
 
         _update(balanceAfter);
         emit FlashLoan(target, msg.sender, _token, amount, amountFee);

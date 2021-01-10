@@ -4,7 +4,7 @@ import { solidity, MockProvider, createFixtureLoader } from 'ethereum-waffle'
 import { BigNumber, bigNumberify } from 'ethers/utils'
 
 import { expandTo18Decimals, mineBlock, encodePrice } from './shared/utilities'
-import { pairFixture } from './shared/fixtures'
+import { poolFixture } from './shared/fixtures'
 import { AddressZero } from 'ethers/constants'
 
 const MINIMUM_LIQUIDITY = bigNumberify(10).pow(3)
@@ -15,7 +15,7 @@ const overrides = {
   gasLimit: 9999999
 }
 
-describe('UniswapV2Pair', () => {
+describe('FlashLoanV1Pool', () => {
   const provider = new MockProvider({
     hardfork: 'istanbul',
     mnemonic: 'horn horn horn horn horn horn horn horn horn horn horn horn',
@@ -27,45 +27,45 @@ describe('UniswapV2Pair', () => {
   let factory: Contract
   let token0: Contract
   let token1: Contract
-  let pair: Contract
+  let pool: Contract
   beforeEach(async () => {
-    const fixture = await loadFixture(pairFixture)
+    const fixture = await loadFixture(poolFixture)
     factory = fixture.factory
     token0 = fixture.token0
     token1 = fixture.token1
-    pair = fixture.pair
+    pool = fixture.pool
   })
 
   it('mint', async () => {
     const token0Amount = expandTo18Decimals(1)
     const token1Amount = expandTo18Decimals(4)
-    await token0.transfer(pair.address, token0Amount)
-    await token1.transfer(pair.address, token1Amount)
+    await token0.transfer(pool.address, token0Amount)
+    await token1.transfer(pool.address, token1Amount)
 
     const expectedLiquidity = expandTo18Decimals(2)
-    await expect(pair.mint(wallet.address, overrides))
-      .to.emit(pair, 'Transfer')
+    await expect(pool.mint(wallet.address, overrides))
+      .to.emit(pool, 'Transfer')
       .withArgs(AddressZero, AddressZero, MINIMUM_LIQUIDITY)
-      .to.emit(pair, 'Transfer')
+      .to.emit(pool, 'Transfer')
       .withArgs(AddressZero, wallet.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
-      .to.emit(pair, 'Sync')
+      .to.emit(pool, 'Sync')
       .withArgs(token0Amount, token1Amount)
-      .to.emit(pair, 'Mint')
+      .to.emit(pool, 'Mint')
       .withArgs(wallet.address, token0Amount, token1Amount)
 
-    expect(await pair.totalSupply()).to.eq(expectedLiquidity)
-    expect(await pair.balanceOf(wallet.address)).to.eq(expectedLiquidity.sub(MINIMUM_LIQUIDITY))
-    expect(await token0.balanceOf(pair.address)).to.eq(token0Amount)
-    expect(await token1.balanceOf(pair.address)).to.eq(token1Amount)
-    const reserves = await pair.getReserves()
+    expect(await pool.totalSupply()).to.eq(expectedLiquidity)
+    expect(await pool.balanceOf(wallet.address)).to.eq(expectedLiquidity.sub(MINIMUM_LIQUIDITY))
+    expect(await token0.balanceOf(pool.address)).to.eq(token0Amount)
+    expect(await token1.balanceOf(pool.address)).to.eq(token1Amount)
+    const reserves = await pool.getReserves()
     expect(reserves[0]).to.eq(token0Amount)
     expect(reserves[1]).to.eq(token1Amount)
   })
 
   async function addLiquidity(token0Amount: BigNumber, token1Amount: BigNumber) {
-    await token0.transfer(pair.address, token0Amount)
-    await token1.transfer(pair.address, token1Amount)
-    await pair.mint(wallet.address, overrides)
+    await token0.transfer(pool.address, token0Amount)
+    await token1.transfer(pool.address, token1Amount)
+    await pool.mint(wallet.address, overrides)
   }
   const swapTestCases: BigNumber[][] = [
     [1, 5, 10, '1662497915624478906'],
@@ -82,11 +82,11 @@ describe('UniswapV2Pair', () => {
     it(`getInputPrice:${i}`, async () => {
       const [swapAmount, token0Amount, token1Amount, expectedOutputAmount] = swapTestCase
       await addLiquidity(token0Amount, token1Amount)
-      await token0.transfer(pair.address, swapAmount)
-      await expect(pair.swap(0, expectedOutputAmount.add(1), wallet.address, '0x', overrides)).to.be.revertedWith(
-        'UniswapV2: K'
+      await token0.transfer(pool.address, swapAmount)
+      await expect(pool.swap(0, expectedOutputAmount.add(1), wallet.address, '0x', overrides)).to.be.revertedWith(
+        'FlashLoanV1: K'
       )
-      await pair.swap(0, expectedOutputAmount, wallet.address, '0x', overrides)
+      await pool.swap(0, expectedOutputAmount, wallet.address, '0x', overrides)
     })
   })
 
@@ -100,11 +100,11 @@ describe('UniswapV2Pair', () => {
     it(`optimistic:${i}`, async () => {
       const [outputAmount, token0Amount, token1Amount, inputAmount] = optimisticTestCase
       await addLiquidity(token0Amount, token1Amount)
-      await token0.transfer(pair.address, inputAmount)
-      await expect(pair.swap(outputAmount.add(1), 0, wallet.address, '0x', overrides)).to.be.revertedWith(
-        'UniswapV2: K'
+      await token0.transfer(pool.address, inputAmount)
+      await expect(pool.swap(outputAmount.add(1), 0, wallet.address, '0x', overrides)).to.be.revertedWith(
+        'FlashLoanV1: K'
       )
-      await pair.swap(outputAmount, 0, wallet.address, '0x', overrides)
+      await pool.swap(outputAmount, 0, wallet.address, '0x', overrides)
     })
   })
 
@@ -115,20 +115,20 @@ describe('UniswapV2Pair', () => {
 
     const swapAmount = expandTo18Decimals(1)
     const expectedOutputAmount = bigNumberify('1662497915624478906')
-    await token0.transfer(pair.address, swapAmount)
-    await expect(pair.swap(0, expectedOutputAmount, wallet.address, '0x', overrides))
+    await token0.transfer(pool.address, swapAmount)
+    await expect(pool.swap(0, expectedOutputAmount, wallet.address, '0x', overrides))
       .to.emit(token1, 'Transfer')
-      .withArgs(pair.address, wallet.address, expectedOutputAmount)
-      .to.emit(pair, 'Sync')
+      .withArgs(pool.address, wallet.address, expectedOutputAmount)
+      .to.emit(pool, 'Sync')
       .withArgs(token0Amount.add(swapAmount), token1Amount.sub(expectedOutputAmount))
-      .to.emit(pair, 'Swap')
+      .to.emit(pool, 'Swap')
       .withArgs(wallet.address, swapAmount, 0, 0, expectedOutputAmount, wallet.address)
 
-    const reserves = await pair.getReserves()
+    const reserves = await pool.getReserves()
     expect(reserves[0]).to.eq(token0Amount.add(swapAmount))
     expect(reserves[1]).to.eq(token1Amount.sub(expectedOutputAmount))
-    expect(await token0.balanceOf(pair.address)).to.eq(token0Amount.add(swapAmount))
-    expect(await token1.balanceOf(pair.address)).to.eq(token1Amount.sub(expectedOutputAmount))
+    expect(await token0.balanceOf(pool.address)).to.eq(token0Amount.add(swapAmount))
+    expect(await token1.balanceOf(pool.address)).to.eq(token1Amount.sub(expectedOutputAmount))
     const totalSupplyToken0 = await token0.totalSupply()
     const totalSupplyToken1 = await token1.totalSupply()
     expect(await token0.balanceOf(wallet.address)).to.eq(totalSupplyToken0.sub(token0Amount).sub(swapAmount))
@@ -142,20 +142,20 @@ describe('UniswapV2Pair', () => {
 
     const swapAmount = expandTo18Decimals(1)
     const expectedOutputAmount = bigNumberify('453305446940074565')
-    await token1.transfer(pair.address, swapAmount)
-    await expect(pair.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides))
+    await token1.transfer(pool.address, swapAmount)
+    await expect(pool.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides))
       .to.emit(token0, 'Transfer')
-      .withArgs(pair.address, wallet.address, expectedOutputAmount)
-      .to.emit(pair, 'Sync')
+      .withArgs(pool.address, wallet.address, expectedOutputAmount)
+      .to.emit(pool, 'Sync')
       .withArgs(token0Amount.sub(expectedOutputAmount), token1Amount.add(swapAmount))
-      .to.emit(pair, 'Swap')
+      .to.emit(pool, 'Swap')
       .withArgs(wallet.address, 0, swapAmount, expectedOutputAmount, 0, wallet.address)
 
-    const reserves = await pair.getReserves()
+    const reserves = await pool.getReserves()
     expect(reserves[0]).to.eq(token0Amount.sub(expectedOutputAmount))
     expect(reserves[1]).to.eq(token1Amount.add(swapAmount))
-    expect(await token0.balanceOf(pair.address)).to.eq(token0Amount.sub(expectedOutputAmount))
-    expect(await token1.balanceOf(pair.address)).to.eq(token1Amount.add(swapAmount))
+    expect(await token0.balanceOf(pool.address)).to.eq(token0Amount.sub(expectedOutputAmount))
+    expect(await token1.balanceOf(pool.address)).to.eq(token1Amount.add(swapAmount))
     const totalSupplyToken0 = await token0.totalSupply()
     const totalSupplyToken1 = await token1.totalSupply()
     expect(await token0.balanceOf(wallet.address)).to.eq(totalSupplyToken0.sub(token0Amount).add(expectedOutputAmount))
@@ -169,13 +169,13 @@ describe('UniswapV2Pair', () => {
 
     // ensure that setting price{0,1}CumulativeLast for the first time doesn't affect our gas math
     await mineBlock(provider, (await provider.getBlock('latest')).timestamp + 1)
-    await pair.sync(overrides)
+    await pool.sync(overrides)
 
     const swapAmount = expandTo18Decimals(1)
     const expectedOutputAmount = bigNumberify('453305446940074565')
-    await token1.transfer(pair.address, swapAmount)
+    await token1.transfer(pool.address, swapAmount)
     await mineBlock(provider, (await provider.getBlock('latest')).timestamp + 1)
-    const tx = await pair.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides)
+    const tx = await pool.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides)
     const receipt = await tx.wait()
     expect(receipt.gasUsed).to.eq(73462)
   })
@@ -186,23 +186,23 @@ describe('UniswapV2Pair', () => {
     await addLiquidity(token0Amount, token1Amount)
 
     const expectedLiquidity = expandTo18Decimals(3)
-    await pair.transfer(pair.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
-    await expect(pair.burn(wallet.address, overrides))
-      .to.emit(pair, 'Transfer')
-      .withArgs(pair.address, AddressZero, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
+    await pool.transfer(pool.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
+    await expect(pool.burn(wallet.address, overrides))
+      .to.emit(pool, 'Transfer')
+      .withArgs(pool.address, AddressZero, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
       .to.emit(token0, 'Transfer')
-      .withArgs(pair.address, wallet.address, token0Amount.sub(1000))
+      .withArgs(pool.address, wallet.address, token0Amount.sub(1000))
       .to.emit(token1, 'Transfer')
-      .withArgs(pair.address, wallet.address, token1Amount.sub(1000))
-      .to.emit(pair, 'Sync')
+      .withArgs(pool.address, wallet.address, token1Amount.sub(1000))
+      .to.emit(pool, 'Sync')
       .withArgs(1000, 1000)
-      .to.emit(pair, 'Burn')
+      .to.emit(pool, 'Burn')
       .withArgs(wallet.address, token0Amount.sub(1000), token1Amount.sub(1000), wallet.address)
 
-    expect(await pair.balanceOf(wallet.address)).to.eq(0)
-    expect(await pair.totalSupply()).to.eq(MINIMUM_LIQUIDITY)
-    expect(await token0.balanceOf(pair.address)).to.eq(1000)
-    expect(await token1.balanceOf(pair.address)).to.eq(1000)
+    expect(await pool.balanceOf(wallet.address)).to.eq(0)
+    expect(await pool.totalSupply()).to.eq(MINIMUM_LIQUIDITY)
+    expect(await token0.balanceOf(pool.address)).to.eq(1000)
+    expect(await token1.balanceOf(pool.address)).to.eq(1000)
     const totalSupplyToken0 = await token0.totalSupply()
     const totalSupplyToken1 = await token1.totalSupply()
     expect(await token0.balanceOf(wallet.address)).to.eq(totalSupplyToken0.sub(1000))
@@ -214,32 +214,32 @@ describe('UniswapV2Pair', () => {
     const token1Amount = expandTo18Decimals(3)
     await addLiquidity(token0Amount, token1Amount)
 
-    const blockTimestamp = (await pair.getReserves())[2]
+    const blockTimestamp = (await pool.getReserves())[2]
     await mineBlock(provider, blockTimestamp + 1)
-    await pair.sync(overrides)
+    await pool.sync(overrides)
 
     const initialPrice = encodePrice(token0Amount, token1Amount)
-    expect(await pair.price0CumulativeLast()).to.eq(initialPrice[0])
-    expect(await pair.price1CumulativeLast()).to.eq(initialPrice[1])
-    expect((await pair.getReserves())[2]).to.eq(blockTimestamp + 1)
+    expect(await pool.price0CumulativeLast()).to.eq(initialPrice[0])
+    expect(await pool.price1CumulativeLast()).to.eq(initialPrice[1])
+    expect((await pool.getReserves())[2]).to.eq(blockTimestamp + 1)
 
     const swapAmount = expandTo18Decimals(3)
-    await token0.transfer(pair.address, swapAmount)
+    await token0.transfer(pool.address, swapAmount)
     await mineBlock(provider, blockTimestamp + 10)
     // swap to a new price eagerly instead of syncing
-    await pair.swap(0, expandTo18Decimals(1), wallet.address, '0x', overrides) // make the price nice
+    await pool.swap(0, expandTo18Decimals(1), wallet.address, '0x', overrides) // make the price nice
 
-    expect(await pair.price0CumulativeLast()).to.eq(initialPrice[0].mul(10))
-    expect(await pair.price1CumulativeLast()).to.eq(initialPrice[1].mul(10))
-    expect((await pair.getReserves())[2]).to.eq(blockTimestamp + 10)
+    expect(await pool.price0CumulativeLast()).to.eq(initialPrice[0].mul(10))
+    expect(await pool.price1CumulativeLast()).to.eq(initialPrice[1].mul(10))
+    expect((await pool.getReserves())[2]).to.eq(blockTimestamp + 10)
 
     await mineBlock(provider, blockTimestamp + 20)
-    await pair.sync(overrides)
+    await pool.sync(overrides)
 
     const newPrice = encodePrice(expandTo18Decimals(6), expandTo18Decimals(2))
-    expect(await pair.price0CumulativeLast()).to.eq(initialPrice[0].mul(10).add(newPrice[0].mul(10)))
-    expect(await pair.price1CumulativeLast()).to.eq(initialPrice[1].mul(10).add(newPrice[1].mul(10)))
-    expect((await pair.getReserves())[2]).to.eq(blockTimestamp + 20)
+    expect(await pool.price0CumulativeLast()).to.eq(initialPrice[0].mul(10).add(newPrice[0].mul(10)))
+    expect(await pool.price1CumulativeLast()).to.eq(initialPrice[1].mul(10).add(newPrice[1].mul(10)))
+    expect((await pool.getReserves())[2]).to.eq(blockTimestamp + 20)
   })
 
   it('feeTo:off', async () => {
@@ -249,13 +249,13 @@ describe('UniswapV2Pair', () => {
 
     const swapAmount = expandTo18Decimals(1)
     const expectedOutputAmount = bigNumberify('996006981039903216')
-    await token1.transfer(pair.address, swapAmount)
-    await pair.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides)
+    await token1.transfer(pool.address, swapAmount)
+    await pool.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides)
 
     const expectedLiquidity = expandTo18Decimals(1000)
-    await pair.transfer(pair.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
-    await pair.burn(wallet.address, overrides)
-    expect(await pair.totalSupply()).to.eq(MINIMUM_LIQUIDITY)
+    await pool.transfer(pool.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
+    await pool.burn(wallet.address, overrides)
+    expect(await pool.totalSupply()).to.eq(MINIMUM_LIQUIDITY)
   })
 
   it('feeTo:on', async () => {
@@ -267,18 +267,18 @@ describe('UniswapV2Pair', () => {
 
     const swapAmount = expandTo18Decimals(1)
     const expectedOutputAmount = bigNumberify('996006981039903216')
-    await token1.transfer(pair.address, swapAmount)
-    await pair.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides)
+    await token1.transfer(pool.address, swapAmount)
+    await pool.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides)
 
     const expectedLiquidity = expandTo18Decimals(1000)
-    await pair.transfer(pair.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
-    await pair.burn(wallet.address, overrides)
-    expect(await pair.totalSupply()).to.eq(MINIMUM_LIQUIDITY.add('249750499251388'))
-    expect(await pair.balanceOf(other.address)).to.eq('249750499251388')
+    await pool.transfer(pool.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
+    await pool.burn(wallet.address, overrides)
+    expect(await pool.totalSupply()).to.eq(MINIMUM_LIQUIDITY.add('249750499251388'))
+    expect(await pool.balanceOf(other.address)).to.eq('249750499251388')
 
     // using 1000 here instead of the symbolic MINIMUM_LIQUIDITY because the amounts only happen to be equal...
     // ...because the initial liquidity amounts were equal
-    expect(await token0.balanceOf(pair.address)).to.eq(bigNumberify(1000).add('249501683697445'))
-    expect(await token1.balanceOf(pair.address)).to.eq(bigNumberify(1000).add('250000187312969'))
+    expect(await token0.balanceOf(pool.address)).to.eq(bigNumberify(1000).add('249501683697445'))
+    expect(await token1.balanceOf(pool.address)).to.eq(bigNumberify(1000).add('250000187312969'))
   })
 })
