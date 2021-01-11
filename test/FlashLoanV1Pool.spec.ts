@@ -28,12 +28,14 @@ describe('FlashLoanV1Pool', () => {
   let token0: Contract
   let token1: Contract
   let pool: Contract
+  let receiver: Contract
   beforeEach(async () => {
     const fixture = await loadFixture(poolFixture)
     factory = fixture.factory
     token0 = fixture.token0
     token1 = fixture.token1
     pool = fixture.pool
+    receiver = fixture.receiver
   })
 
   it('mint', async () => {
@@ -160,6 +162,30 @@ describe('FlashLoanV1Pool', () => {
     const totalSupplyToken1 = await token1.totalSupply()
     expect(await token0.balanceOf(wallet.address)).to.eq(totalSupplyToken0.sub(token0Amount).add(expectedOutputAmount))
     expect(await token1.balanceOf(wallet.address)).to.eq(totalSupplyToken1.sub(token1Amount).sub(swapAmount))
+  })
+
+  it('flashLoan', async () => {
+    const loanAmount = expandTo18Decimals(10000)
+    await addLiquidity(loanAmount)
+
+    const premiumAmount = expandTo18Decimals(5)
+    await token.transfer(receiver.address, premiumAmount)
+    await expect(receiver.executeFlashLoan(pool.address, loanAmount))
+      .to.emit(token, 'Transfer')
+      .withArgs(pool.address, receiver.address, loanAmount)
+      .to.emit(token, 'Transfer')
+      .withArgs(receiver.address, pool.address, loanAmount.add(premiumAmount))
+      .to.emit(pool, 'Sync')
+      .withArgs(loanAmount.add(premiumAmount))
+      .to.emit(pool, 'FlashLoan')
+      .withArgs(receiver.address, receiver.address, token, loanAmount, premiumAmount)
+
+    const reserve = await pool.reserve()
+    expect(reserve).to.eq(loanAmount.add(premiumAmount))
+    expect(await token.balanceOf(pool.address)).to.eq(loanAmount.add(premiumAmount))
+    expect(await token0.balanceOf(receiver.address)).to.eq(0)
+    const totalSupplyToken = await token.totalSupply()
+    expect(await token.balanceOf(wallet.address)).to.eq(totalSupplyToken.sub(loanAmount).sub(premiumAmount))
   })
 
   it('swap:gas', async () => {

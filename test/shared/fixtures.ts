@@ -5,6 +5,7 @@ import { deployContract } from 'ethereum-waffle'
 import { expandTo18Decimals } from './utilities'
 
 import ERC20 from '../../build/ERC20.json'
+import FlashLoanReceiver from '../../build/FlashLoanReceiver.json'
 import FlashLoanV1Factory from '../../build/FlashLoanV1Factory.json'
 import FlashLoanV1Pool from '../../build/FlashLoanV1Pool.json'
 
@@ -25,6 +26,7 @@ interface PoolFixture extends FactoryFixture {
   token0: Contract
   token1: Contract
   pool: Contract
+  receiver: Contract
 }
 
 export async function poolFixture(provider: Web3Provider, [wallet]: Wallet[]): Promise<PoolFixture> {
@@ -32,6 +34,7 @@ export async function poolFixture(provider: Web3Provider, [wallet]: Wallet[]): P
 
   const tokenA = await deployContract(wallet, ERC20, [expandTo18Decimals(10000)], overrides)
   const tokenB = await deployContract(wallet, ERC20, [expandTo18Decimals(10000)], overrides)
+  const receiver = await deployContract(wallet, FlashLoanReceiver)
 
   await factory.createPool(tokenA.address, tokenB.address, overrides)
   const poolAddress = await factory.getPool(tokenA.address, tokenB.address)
@@ -41,5 +44,5 @@ export async function poolFixture(provider: Web3Provider, [wallet]: Wallet[]): P
   const token0 = tokenA.address === token0Address ? tokenA : tokenB
   const token1 = tokenA.address === token0Address ? tokenB : tokenA
 
-  return { factory, token0, token1, pool }
+  return { factory, token0, token1, pool, receiver }
 }
