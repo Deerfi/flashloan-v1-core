@@ -11,10 +11,7 @@ import FlashLoanV1Pool from '../build/FlashLoanV1Pool.json'
 
 chai.use(solidity)
 
-const TEST_ADDRESSES: [string, string] = [
-  '0x1000000000000000000000000000000000000000',
-  '0x2000000000000000000000000000000000000000'
-]
+const TEST_ADDRESSES: string = '0x1000000000000000000000000000000000000000'
 
 describe('FlashLoanV1Factory', () => {
   const provider = new MockProvider({
@@ -38,38 +35,31 @@ describe('FlashLoanV1Factory', () => {
     expect(await factory.allPoolsLength()).to.eq(0)
   })
 
-  async function createPool(tokens: [string, string]) {
+  async function createPool(token: string) {
     const bytecode = `0x${FlashLoanV1Pool.evm.bytecode.object}`
-    const create2Address = getCreate2Address(factory.address, tokens, bytecode)
-    await expect(factory.createPool(...tokens))
+    const create2Address = getCreate2Address(factory.address, token, bytecode)
+    await expect(factory.createPool(token))
       .to.emit(factory, 'PoolCreated')
-      .withArgs(TEST_ADDRESSES[0], TEST_ADDRESSES[1], create2Address, bigNumberify(1))
+      .withArgs(TEST_ADDRESSES, create2Address, bigNumberify(1))
 
-    await expect(factory.createPool(...tokens)).to.be.reverted // FlashLoanV1: POOL_EXISTS
-    await expect(factory.createPool(...tokens.slice().reverse())).to.be.reverted // FlashLoanV1: POOL_EXISTS
-    expect(await factory.getPool(...tokens)).to.eq(create2Address)
-    expect(await factory.getPool(...tokens.slice().reverse())).to.eq(create2Address)
+    await expect(factory.createPool(token)).to.be.reverted // FlashLoanV1: POOL_EXISTS
+    expect(await factory.getPool(token)).to.eq(create2Address)
     expect(await factory.allPools(0)).to.eq(create2Address)
     expect(await factory.allPoolsLength()).to.eq(1)
 
     const pool = new Contract(create2Address, JSON.stringify(FlashLoanV1Pool.abi), provider)
     expect(await pool.factory()).to.eq(factory.address)
-    expect(await pool.token0()).to.eq(TEST_ADDRESSES[0])
-    expect(await pool.token1()).to.eq(TEST_ADDRESSES[1])
+    expect(await pool.token()).to.eq(TEST_ADDRESSES)
   }
 
   it('createPool', async () => {
     await createPool(TEST_ADDRESSES)
   })
 
-  it('createPool:reverse', async () => {
-    await createPool(TEST_ADDRESSES.slice().reverse() as [string, string])
-  })
-
   it('createPool:gas', async () => {
-    const tx = await factory.createPool(...TEST_ADDRESSES)
+    const tx = await factory.createPool(TEST_ADDRESSES)
     const receipt = await tx.wait()
-    expect(receipt.gasUsed).to.eq(2512920)
+    expect(receipt.gasUsed).to.eq(1952684)
   })
 
   it('setFeeInBips', async () => {
