@@ -18,8 +18,10 @@ contract FlashLoanReceiver is IFlashLoanReceiver {
         uint premium,
         address initiator,
         bytes calldata params
-  ) external returns (bool) {
-      address pool = abi.decode(params, (address));
-      IERC20(asset).transfer(pool, amount.add(premium));
-  }
+    ) external returns (bool) {
+        initiator;
+
+        address pool = abi.decode(params, (address));
+        IERC20(asset).transfer(pool, amount.add(premium));
+    }
 }

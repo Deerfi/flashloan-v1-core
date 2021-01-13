@@ -23,8 +23,8 @@ export async function factoryFixture(_: Web3Provider, [wallet]: Wallet[]): Promi
 }
 
 interface PoolFixture extends FactoryFixture {
-  token0: Contract
-  token1: Contract
+  factory: Contract
+  token: Contract
   pool: Contract
   receiver: Contract
 }
@@ -32,17 +32,12 @@ interface PoolFixture extends FactoryFixture {
 export async function poolFixture(provider: Web3Provider, [wallet]: Wallet[]): Promise<PoolFixture> {
   const { factory } = await factoryFixture(provider, [wallet])
 
-  const tokenA = await deployContract(wallet, ERC20, [expandTo18Decimals(10000)], overrides)
-  const tokenB = await deployContract(wallet, ERC20, [expandTo18Decimals(10000)], overrides)
+  const token = await deployContract(wallet, ERC20, [expandTo18Decimals(10005)], overrides)
   const receiver = await deployContract(wallet, FlashLoanReceiver)
 
-  await factory.createPool(tokenA.address, tokenB.address, overrides)
-  const poolAddress = await factory.getPool(tokenA.address, tokenB.address)
+  await factory.createPool(token.address, overrides)
+  const poolAddress = await factory.getPool(token.address)
   const pool = new Contract(poolAddress, JSON.stringify(FlashLoanV1Pool.abi), provider).connect(wallet)
 
-  const token0Address = (await pool.token0()).address
-  const token0 = tokenA.address === token0Address ? tokenA : tokenB
-  const token1 = tokenA.address === token0Address ? tokenB : tokenA
-
-  return { factory, token0, token1, pool, receiver }
+  return { factory, token, pool, receiver }
 }
