@@ -1,6 +1,6 @@
 pragma solidity >=0.5.0;
 
-interface IUniswapV2ERC20 {
+interface IFlashLoanV1Pool {
     event Approval(address indexed owner, address indexed spender, uint value);
     event Transfer(address indexed from, address indexed to, uint value);
 
@@ -20,4 +20,29 @@ interface IUniswapV2ERC20 {
     function nonces(address owner) external view returns (uint);
 
     function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
+
+    event Mint(address indexed sender, uint amount);
+    event Burn(address indexed sender, uint amount, address indexed to);
+    event FlashLoan(
+        address indexed target,
+        address indexed initiator,
+        address indexed asset,
+        uint256 amount,
+        uint256 premium
+    );
+    event Sync(uint112 reserve);
+
+    function MINIMUM_LIQUIDITY() external pure returns (uint);
+    function factory() external view returns (address);
+    function token() external view returns (address);
+    function reserve() external view returns (uint);
+    function kLast() external view returns (uint);
+
+    function mint(address to) external returns (uint liquidity);
+    function burn(address to) external returns (uint amount);
+    function flashLoan(address target, uint256 amount, bytes calldata data) external;
+    function skim(address to) external;
+    function sync() external;
+
+    function initialize(address) external;
 }
