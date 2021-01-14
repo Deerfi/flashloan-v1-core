@@ -27,8 +27,8 @@ interface IFlashLoanV1Pool {
         address indexed target,
         address indexed initiator,
         address indexed asset,
-        uint256 amount,
-        uint256 premium
+        uint amount,
+        uint premium
     );
     event Sync(uint112 reserve);
 
@@ -40,7 +40,7 @@ interface IFlashLoanV1Pool {
 
     function mint(address to) external returns (uint liquidity);
     function burn(address to) external returns (uint amount);
-    function flashLoan(address target, uint256 amount, bytes calldata data) external;
+    function flashLoan(address target, uint amount, bytes calldata data) external;
     function skim(address to) external;
     function sync() external;
 

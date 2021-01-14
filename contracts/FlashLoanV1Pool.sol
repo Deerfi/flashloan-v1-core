@@ -41,8 +41,8 @@ contract FlashLoanV1Pool is IFlashLoanV1Pool, FlashLoanV1ERC20 {
         address indexed target,
         address indexed initiator,
         address indexed asset,
-        uint256 amount,
-        uint256 premium
+        uint amount,
+        uint premium
     );
     event Sync(uint reserve);
 
@@ -125,15 +125,15 @@ contract FlashLoanV1Pool is IFlashLoanV1Pool, FlashLoanV1ERC20 {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function flashLoan(address target, uint256 amount, bytes calldata data) external lock {
+    function flashLoan(address target, uint amount, bytes calldata data) external lock {
         address _token = token; // gas savings
         require(amount > 0, 'FlashLoanV1: INSUFFICIENT_LIQUIDITY_TO_BORROW');
 
-        uint256 balanceBefore = IERC20(_token).balanceOf(address(this));
+        uint balanceBefore = IERC20(_token).balanceOf(address(this));
         require(balanceBefore >= amount, 'FlashLoanV1: INSUFFICIENT_LIQUIDITY_TO_BORROW');
 
-        uint256 feeInBips = IFlashLoanV1Factory(factory).feeInBips();
-        uint256 amountFee = amount.mul(feeInBips) / 10000;
+        uint feeInBips = IFlashLoanV1Factory(factory).feeInBips();
+        uint amountFee = amount.mul(feeInBips) / 10000;
         require(amountFee > 0, 'FlashLoanV1: AMOUNT_TOO_SMALL');
 
         _safeTransfer(_token, target, amount);
@@ -141,7 +141,7 @@ contract FlashLoanV1Pool is IFlashLoanV1Pool, FlashLoanV1ERC20 {
         IFlashLoanReceiver receiver = IFlashLoanReceiver(target);
         receiver.executeOperation(_token, amount, amountFee, msg.sender, data);
 
-        uint256 balanceAfter = IERC20(_token).balanceOf(address(this));
+        uint balanceAfter = IERC20(_token).balanceOf(address(this));
         require(balanceAfter == balanceBefore.add(amountFee), 'FlashLoanV1: AMOUNT_INCONSISTENT');
 
         _update(balanceAfter);
