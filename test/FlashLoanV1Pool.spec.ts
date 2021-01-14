@@ -1,9 +1,9 @@
 import chai, { expect } from 'chai'
 import { Contract } from 'ethers'
 import { solidity, MockProvider, createFixtureLoader } from 'ethereum-waffle'
-import { BigNumber, bigNumberify } from 'ethers/utils'
+import { BigNumber, bigNumberify, defaultAbiCoder } from 'ethers/utils'
 
-import { expandTo18Decimals, mineBlock, encodePrice } from './shared/utilities'
+import { expandTo18Decimals, mineBlock } from './shared/utilities'
 import { poolFixture } from './shared/fixtures'
 import { AddressZero } from 'ethers/constants'
 
@@ -25,232 +25,155 @@ describe('FlashLoanV1Pool', () => {
   const loadFixture = createFixtureLoader(provider, [wallet])
 
   let factory: Contract
-  let token0: Contract
-  let token1: Contract
+  let token: Contract
   let pool: Contract
+  let receiver: Contract
   beforeEach(async () => {
     const fixture = await loadFixture(poolFixture)
     factory = fixture.factory
-    token0 = fixture.token0
-    token1 = fixture.token1
+    token = fixture.token
     pool = fixture.pool
+    receiver = fixture.receiver
   })
 
   it('mint', async () => {
-    const token0Amount = expandTo18Decimals(1)
-    const token1Amount = expandTo18Decimals(4)
-    await token0.transfer(pool.address, token0Amount)
-    await token1.transfer(pool.address, token1Amount)
+    const tokenAmount = expandTo18Decimals(1)
+    await token.transfer(pool.address, tokenAmount)
 
-    const expectedLiquidity = expandTo18Decimals(2)
+    const expectedLiquidity = expandTo18Decimals(1)
     await expect(pool.mint(wallet.address, overrides))
       .to.emit(pool, 'Transfer')
       .withArgs(AddressZero, AddressZero, MINIMUM_LIQUIDITY)
       .to.emit(pool, 'Transfer')
       .withArgs(AddressZero, wallet.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
       .to.emit(pool, 'Sync')
-      .withArgs(token0Amount, token1Amount)
+      .withArgs(tokenAmount)
       .to.emit(pool, 'Mint')
-      .withArgs(wallet.address, token0Amount, token1Amount)
+      .withArgs(wallet.address, tokenAmount)
 
     expect(await pool.totalSupply()).to.eq(expectedLiquidity)
     expect(await pool.balanceOf(wallet.address)).to.eq(expectedLiquidity.sub(MINIMUM_LIQUIDITY))
-    expect(await token0.balanceOf(pool.address)).to.eq(token0Amount)
-    expect(await token1.balanceOf(pool.address)).to.eq(token1Amount)
-    const reserves = await pool.getReserves()
-    expect(reserves[0]).to.eq(token0Amount)
-    expect(reserves[1]).to.eq(token1Amount)
+    expect(await token.balanceOf(pool.address)).to.eq(tokenAmount)
+    const reserve = await pool.reserve()
+    expect(reserve).to.eq(tokenAmount)
   })
 
-  async function addLiquidity(token0Amount: BigNumber, token1Amount: BigNumber) {
-    await token0.transfer(pool.address, token0Amount)
-    await token1.transfer(pool.address, token1Amount)
+  async function addLiquidity(tokenAmount: BigNumber) {
+    await token.transfer(pool.address, tokenAmount)
     await pool.mint(wallet.address, overrides)
   }
-  const swapTestCases: BigNumber[][] = [
-    [1, 5, 10, '1662497915624478906'],
-    [1, 10, 5, '453305446940074565'],
 
-    [2, 5, 10, '2851015155847869602'],
-    [2, 10, 5, '831248957812239453'],
+  it('flashLoan', async () => {
+    const loanAmount = expandTo18Decimals(10000)
 
-    [1, 10, 10, '906610893880149131'],
-    [1, 100, 100, '987158034397061298'],
-    [1, 1000, 1000, '996006981039903216']
-  ].map(a => a.map(n => (typeof n === 'string' ? bigNumberify(n) : expandTo18Decimals(n))))
-  swapTestCases.forEach((swapTestCase, i) => {
-    it(`getInputPrice:${i}`, async () => {
-      const [swapAmount, token0Amount, token1Amount, expectedOutputAmount] = swapTestCase
-      await addLiquidity(token0Amount, token1Amount)
-      await token0.transfer(pool.address, swapAmount)
-      await expect(pool.swap(0, expectedOutputAmount.add(1), wallet.address, '0x', overrides)).to.be.revertedWith(
-        'FlashLoanV1: K'
-      )
-      await pool.swap(0, expectedOutputAmount, wallet.address, '0x', overrides)
-    })
-  })
+    const data = defaultAbiCoder.encode(
+      ['address'],
+      [pool.address]
+    )
+    const premiumAmount = expandTo18Decimals(5)
+    await token.transfer(receiver.address, premiumAmount)
+    await token.transfer(pool.address, loanAmount)
 
-  const optimisticTestCases: BigNumber[][] = [
-    ['997000000000000000', 5, 10, 1], // given amountIn, amountOut = floor(amountIn * .997)
-    ['997000000000000000', 10, 5, 1],
-    ['997000000000000000', 5, 5, 1],
-    [1, 5, 5, '1003009027081243732'] // given amountOut, amountIn = ceiling(amountOut / .997)
-  ].map(a => a.map(n => (typeof n === 'string' ? bigNumberify(n) : expandTo18Decimals(n))))
-  optimisticTestCases.forEach((optimisticTestCase, i) => {
-    it(`optimistic:${i}`, async () => {
-      const [outputAmount, token0Amount, token1Amount, inputAmount] = optimisticTestCase
-      await addLiquidity(token0Amount, token1Amount)
-      await token0.transfer(pool.address, inputAmount)
-      await expect(pool.swap(outputAmount.add(1), 0, wallet.address, '0x', overrides)).to.be.revertedWith(
-        'FlashLoanV1: K'
-      )
-      await pool.swap(outputAmount, 0, wallet.address, '0x', overrides)
-    })
-  })
-
-  it('swap:token0', async () => {
-    const token0Amount = expandTo18Decimals(5)
-    const token1Amount = expandTo18Decimals(10)
-    await addLiquidity(token0Amount, token1Amount)
-
-    const swapAmount = expandTo18Decimals(1)
-    const expectedOutputAmount = bigNumberify('1662497915624478906')
-    await token0.transfer(pool.address, swapAmount)
-    await expect(pool.swap(0, expectedOutputAmount, wallet.address, '0x', overrides))
-      .to.emit(token1, 'Transfer')
-      .withArgs(pool.address, wallet.address, expectedOutputAmount)
+    await expect(pool.flashLoan(receiver.address, loanAmount, data))
+      .to.emit(token, 'Transfer')
+      .withArgs(pool.address, receiver.address, loanAmount)
+      .to.emit(token, 'Transfer')
+      .withArgs(receiver.address, pool.address, loanAmount.add(premiumAmount))
       .to.emit(pool, 'Sync')
-      .withArgs(token0Amount.add(swapAmount), token1Amount.sub(expectedOutputAmount))
-      .to.emit(pool, 'Swap')
-      .withArgs(wallet.address, swapAmount, 0, 0, expectedOutputAmount, wallet.address)
+      .withArgs(loanAmount.add(premiumAmount))
+      .to.emit(pool, 'FlashLoan')
+      .withArgs(receiver.address, wallet.address, token.address, loanAmount, premiumAmount)
 
-    const reserves = await pool.getReserves()
-    expect(reserves[0]).to.eq(token0Amount.add(swapAmount))
-    expect(reserves[1]).to.eq(token1Amount.sub(expectedOutputAmount))
-    expect(await token0.balanceOf(pool.address)).to.eq(token0Amount.add(swapAmount))
-    expect(await token1.balanceOf(pool.address)).to.eq(token1Amount.sub(expectedOutputAmount))
-    const totalSupplyToken0 = await token0.totalSupply()
-    const totalSupplyToken1 = await token1.totalSupply()
-    expect(await token0.balanceOf(wallet.address)).to.eq(totalSupplyToken0.sub(token0Amount).sub(swapAmount))
-    expect(await token1.balanceOf(wallet.address)).to.eq(totalSupplyToken1.sub(token1Amount).add(expectedOutputAmount))
+      const reserve = await pool.reserve()
+      expect(reserve).to.eq(loanAmount.add(premiumAmount))
+      expect(await token.balanceOf(pool.address)).to.eq(loanAmount.add(premiumAmount))
+      expect(await token.balanceOf(receiver.address)).to.eq(0)
+      const totalSupplyToken = await token.totalSupply()
+      expect(await token.balanceOf(wallet.address)).to.eq(totalSupplyToken.sub(loanAmount).sub(premiumAmount))
   })
 
-  it('swap:token1', async () => {
-    const token0Amount = expandTo18Decimals(5)
-    const token1Amount = expandTo18Decimals(10)
-    await addLiquidity(token0Amount, token1Amount)
+  it('flashLoan: executeFlashLoan', async () => {
+    const loanAmount = expandTo18Decimals(10000)
 
-    const swapAmount = expandTo18Decimals(1)
-    const expectedOutputAmount = bigNumberify('453305446940074565')
-    await token1.transfer(pool.address, swapAmount)
-    await expect(pool.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides))
-      .to.emit(token0, 'Transfer')
-      .withArgs(pool.address, wallet.address, expectedOutputAmount)
+    const premiumAmount = expandTo18Decimals(5)
+    await token.transfer(receiver.address, premiumAmount)
+    await token.transfer(pool.address, loanAmount)
+
+    await expect(receiver.executeFlashLoan(pool.address, loanAmount))
+      .to.emit(token, 'Transfer')
+      .withArgs(pool.address, receiver.address, loanAmount)
+      .to.emit(token, 'Transfer')
+      .withArgs(receiver.address, pool.address, loanAmount.add(premiumAmount))
       .to.emit(pool, 'Sync')
-      .withArgs(token0Amount.sub(expectedOutputAmount), token1Amount.add(swapAmount))
-      .to.emit(pool, 'Swap')
-      .withArgs(wallet.address, 0, swapAmount, expectedOutputAmount, 0, wallet.address)
+      .withArgs(loanAmount.add(premiumAmount))
+      .to.emit(pool, 'FlashLoan')
+      .withArgs(receiver.address, receiver.address, token.address, loanAmount, premiumAmount)
 
-    const reserves = await pool.getReserves()
-    expect(reserves[0]).to.eq(token0Amount.sub(expectedOutputAmount))
-    expect(reserves[1]).to.eq(token1Amount.add(swapAmount))
-    expect(await token0.balanceOf(pool.address)).to.eq(token0Amount.sub(expectedOutputAmount))
-    expect(await token1.balanceOf(pool.address)).to.eq(token1Amount.add(swapAmount))
-    const totalSupplyToken0 = await token0.totalSupply()
-    const totalSupplyToken1 = await token1.totalSupply()
-    expect(await token0.balanceOf(wallet.address)).to.eq(totalSupplyToken0.sub(token0Amount).add(expectedOutputAmount))
-    expect(await token1.balanceOf(wallet.address)).to.eq(totalSupplyToken1.sub(token1Amount).sub(swapAmount))
+      const reserve = await pool.reserve()
+      expect(reserve).to.eq(loanAmount.add(premiumAmount))
+      expect(await token.balanceOf(pool.address)).to.eq(loanAmount.add(premiumAmount))
+      expect(await token.balanceOf(receiver.address)).to.eq(0)
+      const totalSupplyToken = await token.totalSupply()
+      expect(await token.balanceOf(wallet.address)).to.eq(totalSupplyToken.sub(loanAmount).sub(premiumAmount))
   })
 
-  it('swap:gas', async () => {
-    const token0Amount = expandTo18Decimals(5)
-    const token1Amount = expandTo18Decimals(10)
-    await addLiquidity(token0Amount, token1Amount)
+  it('flashloan:gas', async () => {
+    const loanAmount = expandTo18Decimals(10000)
+    const premiumAmount = expandTo18Decimals(5)
 
     // ensure that setting price{0,1}CumulativeLast for the first time doesn't affect our gas math
     await mineBlock(provider, (await provider.getBlock('latest')).timestamp + 1)
     await pool.sync(overrides)
 
-    const swapAmount = expandTo18Decimals(1)
-    const expectedOutputAmount = bigNumberify('453305446940074565')
-    await token1.transfer(pool.address, swapAmount)
+    const data = defaultAbiCoder.encode(
+      ['address'],
+      [pool.address]
+    )
+
+    await token.transfer(pool.address, loanAmount)
+    await token.transfer(receiver.address, premiumAmount)
     await mineBlock(provider, (await provider.getBlock('latest')).timestamp + 1)
-    const tx = await pool.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides)
+    const tx = await pool.flashLoan(receiver.address, loanAmount, data)
     const receipt = await tx.wait()
-    expect(receipt.gasUsed).to.eq(73462)
+    expect(receipt.gasUsed).to.eq(69776)
   })
 
   it('burn', async () => {
-    const token0Amount = expandTo18Decimals(3)
-    const token1Amount = expandTo18Decimals(3)
-    await addLiquidity(token0Amount, token1Amount)
+    const tokenAmount = expandTo18Decimals(3)
+    await addLiquidity(tokenAmount)
 
     const expectedLiquidity = expandTo18Decimals(3)
     await pool.transfer(pool.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
     await expect(pool.burn(wallet.address, overrides))
       .to.emit(pool, 'Transfer')
       .withArgs(pool.address, AddressZero, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
-      .to.emit(token0, 'Transfer')
-      .withArgs(pool.address, wallet.address, token0Amount.sub(1000))
-      .to.emit(token1, 'Transfer')
-      .withArgs(pool.address, wallet.address, token1Amount.sub(1000))
+      .to.emit(token, 'Transfer')
+      .withArgs(pool.address, wallet.address, tokenAmount.sub(1000))
       .to.emit(pool, 'Sync')
-      .withArgs(1000, 1000)
+      .withArgs(1000)
       .to.emit(pool, 'Burn')
-      .withArgs(wallet.address, token0Amount.sub(1000), token1Amount.sub(1000), wallet.address)
+      .withArgs(wallet.address, tokenAmount.sub(1000), wallet.address)
 
     expect(await pool.balanceOf(wallet.address)).to.eq(0)
     expect(await pool.totalSupply()).to.eq(MINIMUM_LIQUIDITY)
-    expect(await token0.balanceOf(pool.address)).to.eq(1000)
-    expect(await token1.balanceOf(pool.address)).to.eq(1000)
-    const totalSupplyToken0 = await token0.totalSupply()
-    const totalSupplyToken1 = await token1.totalSupply()
-    expect(await token0.balanceOf(wallet.address)).to.eq(totalSupplyToken0.sub(1000))
-    expect(await token1.balanceOf(wallet.address)).to.eq(totalSupplyToken1.sub(1000))
-  })
-
-  it('price{0,1}CumulativeLast', async () => {
-    const token0Amount = expandTo18Decimals(3)
-    const token1Amount = expandTo18Decimals(3)
-    await addLiquidity(token0Amount, token1Amount)
-
-    const blockTimestamp = (await pool.getReserves())[2]
-    await mineBlock(provider, blockTimestamp + 1)
-    await pool.sync(overrides)
-
-    const initialPrice = encodePrice(token0Amount, token1Amount)
-    expect(await pool.price0CumulativeLast()).to.eq(initialPrice[0])
-    expect(await pool.price1CumulativeLast()).to.eq(initialPrice[1])
-    expect((await pool.getReserves())[2]).to.eq(blockTimestamp + 1)
-
-    const swapAmount = expandTo18Decimals(3)
-    await token0.transfer(pool.address, swapAmount)
-    await mineBlock(provider, blockTimestamp + 10)
-    // swap to a new price eagerly instead of syncing
-    await pool.swap(0, expandTo18Decimals(1), wallet.address, '0x', overrides) // make the price nice
-
-    expect(await pool.price0CumulativeLast()).to.eq(initialPrice[0].mul(10))
-    expect(await pool.price1CumulativeLast()).to.eq(initialPrice[1].mul(10))
-    expect((await pool.getReserves())[2]).to.eq(blockTimestamp + 10)
-
-    await mineBlock(provider, blockTimestamp + 20)
-    await pool.sync(overrides)
-
-    const newPrice = encodePrice(expandTo18Decimals(6), expandTo18Decimals(2))
-    expect(await pool.price0CumulativeLast()).to.eq(initialPrice[0].mul(10).add(newPrice[0].mul(10)))
-    expect(await pool.price1CumulativeLast()).to.eq(initialPrice[1].mul(10).add(newPrice[1].mul(10)))
-    expect((await pool.getReserves())[2]).to.eq(blockTimestamp + 20)
+    expect(await token.balanceOf(pool.address)).to.eq(1000)
+    const totalSupplyToken = await token.totalSupply()
+    expect(await token.balanceOf(wallet.address)).to.eq(totalSupplyToken.sub(1000))
   })
 
   it('feeTo:off', async () => {
-    const token0Amount = expandTo18Decimals(1000)
-    const token1Amount = expandTo18Decimals(1000)
-    await addLiquidity(token0Amount, token1Amount)
+    const tokenAmount = expandTo18Decimals(1000)
+    await addLiquidity(tokenAmount)
 
-    const swapAmount = expandTo18Decimals(1)
-    const expectedOutputAmount = bigNumberify('996006981039903216')
-    await token1.transfer(pool.address, swapAmount)
-    await pool.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides)
+    const data = defaultAbiCoder.encode(
+      ['address'],
+      [pool.address]
+    )
+    const loanAmount = expandTo18Decimals(1)
+    const premiumAmount = bigNumberify('500000000000000')
+    await token.transfer(receiver.address, premiumAmount)
+    await token.transfer(pool.address, loanAmount)
+    await pool.flashLoan(receiver.address, loanAmount, data)
 
     const expectedLiquidity = expandTo18Decimals(1000)
     await pool.transfer(pool.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
@@ -261,24 +184,27 @@ describe('FlashLoanV1Pool', () => {
   it('feeTo:on', async () => {
     await factory.setFeeTo(other.address)
 
-    const token0Amount = expandTo18Decimals(1000)
-    const token1Amount = expandTo18Decimals(1000)
-    await addLiquidity(token0Amount, token1Amount)
+    const tokenAmount = expandTo18Decimals(1000)
+    await addLiquidity(tokenAmount)
 
-    const swapAmount = expandTo18Decimals(1)
-    const expectedOutputAmount = bigNumberify('996006981039903216')
-    await token1.transfer(pool.address, swapAmount)
-    await pool.swap(expectedOutputAmount, 0, wallet.address, '0x', overrides)
+    const data = defaultAbiCoder.encode(
+      ['address'],
+      [pool.address]
+    )
+    const loanAmount = expandTo18Decimals(1)
+    const premiumAmount = bigNumberify('500000000000000')
+    await token.transfer(receiver.address, premiumAmount)
+    await token.transfer(pool.address, loanAmount)
+    await pool.flashLoan(receiver.address, loanAmount, data)
 
     const expectedLiquidity = expandTo18Decimals(1000)
     await pool.transfer(pool.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
     await pool.burn(wallet.address, overrides)
-    expect(await pool.totalSupply()).to.eq(MINIMUM_LIQUIDITY.add('249750499251388'))
-    expect(await pool.balanceOf(other.address)).to.eq('249750499251388')
+    expect(await pool.totalSupply()).to.eq(MINIMUM_LIQUIDITY.add('166611088005375518'))
+    expect(await pool.balanceOf(other.address)).to.eq('166611088005375518')
 
     // using 1000 here instead of the symbolic MINIMUM_LIQUIDITY because the amounts only happen to be equal...
     // ...because the initial liquidity amounts were equal
-    expect(await token0.balanceOf(pool.address)).to.eq(bigNumberify(1000).add('249501683697445'))
-    expect(await token1.balanceOf(pool.address)).to.eq(bigNumberify(1000).add('250000187312969'))
+    expect(await token.balanceOf(pool.address)).to.eq(bigNumberify(1000).add('166750000000000001'))
   })
 })
