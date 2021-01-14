@@ -23,7 +23,6 @@ export async function factoryFixture(_: Web3Provider, [wallet]: Wallet[]): Promi
 }
 
 interface PoolFixture extends FactoryFixture {
-  factory: Contract
   token: Contract
   pool: Contract
   receiver: Contract

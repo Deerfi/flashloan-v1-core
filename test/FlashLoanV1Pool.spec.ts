@@ -1,7 +1,7 @@
 import chai, { expect } from 'chai'
 import { Contract } from 'ethers'
 import { solidity, MockProvider, createFixtureLoader } from 'ethereum-waffle'
-import { BigNumber, bigNumberify } from 'ethers/utils'
+import { BigNumber, bigNumberify, defaultAbiCoder } from 'ethers/utils'
 
 import { expandTo18Decimals, mineBlock } from './shared/utilities'
 import { poolFixture } from './shared/fixtures'
@@ -66,6 +66,35 @@ describe('FlashLoanV1Pool', () => {
   it('flashLoan', async () => {
     const loanAmount = expandTo18Decimals(10000)
 
+    const data = defaultAbiCoder.encode(
+      ['address'],
+      [pool.address]
+    )
+    const premiumAmount = expandTo18Decimals(5)
+    await token.transfer(receiver.address, premiumAmount)
+    await token.transfer(pool.address, loanAmount)
+
+    await expect(pool.flashLoan(receiver.address, loanAmount, data))
+      .to.emit(token, 'Transfer')
+      .withArgs(pool.address, receiver.address, loanAmount)
+      .to.emit(token, 'Transfer')
+      .withArgs(receiver.address, pool.address, loanAmount.add(premiumAmount))
+      .to.emit(pool, 'Sync')
+      .withArgs(loanAmount.add(premiumAmount))
+      .to.emit(pool, 'FlashLoan')
+      .withArgs(receiver.address, wallet.address, token.address, loanAmount, premiumAmount)
+
+      const reserve = await pool.reserve()
+      expect(reserve).to.eq(loanAmount.add(premiumAmount))
+      expect(await token.balanceOf(pool.address)).to.eq(loanAmount.add(premiumAmount))
+      expect(await token.balanceOf(receiver.address)).to.eq(0)
+      const totalSupplyToken = await token.totalSupply()
+      expect(await token.balanceOf(wallet.address)).to.eq(totalSupplyToken.sub(loanAmount).sub(premiumAmount))
+  })
+
+  it('flashLoan: executeFlashLoan', async () => {
+    const loanAmount = expandTo18Decimals(10000)
+
     const premiumAmount = expandTo18Decimals(5)
     await token.transfer(receiver.address, premiumAmount)
     await token.transfer(pool.address, loanAmount)
@@ -96,12 +125,17 @@ describe('FlashLoanV1Pool', () => {
     await mineBlock(provider, (await provider.getBlock('latest')).timestamp + 1)
     await pool.sync(overrides)
 
+    const data = defaultAbiCoder.encode(
+      ['address'],
+      [pool.address]
+    )
+
     await token.transfer(pool.address, loanAmount)
     await token.transfer(receiver.address, premiumAmount)
     await mineBlock(provider, (await provider.getBlock('latest')).timestamp + 1)
-    const tx = await receiver.executeFlashLoan(pool.address, loanAmount)
+    const tx = await pool.flashLoan(receiver.address, loanAmount, data)
     const receipt = await tx.wait()
-    expect(receipt.gasUsed).to.eq(71256)
+    expect(receipt.gasUsed).to.eq(69776)
   })
 
   it('burn', async () => {
@@ -131,11 +165,15 @@ describe('FlashLoanV1Pool', () => {
     const tokenAmount = expandTo18Decimals(1000)
     await addLiquidity(tokenAmount)
 
+    const data = defaultAbiCoder.encode(
+      ['address'],
+      [pool.address]
+    )
     const loanAmount = expandTo18Decimals(1)
     const premiumAmount = bigNumberify('500000000000000')
     await token.transfer(receiver.address, premiumAmount)
     await token.transfer(pool.address, loanAmount)
-    await receiver.executeFlashLoan(pool.address, loanAmount)
+    await pool.flashLoan(receiver.address, loanAmount, data)
 
     const expectedLiquidity = expandTo18Decimals(1000)
     await pool.transfer(pool.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
@@ -149,11 +187,15 @@ describe('FlashLoanV1Pool', () => {
     const tokenAmount = expandTo18Decimals(1000)
     await addLiquidity(tokenAmount)
 
+    const data = defaultAbiCoder.encode(
+      ['address'],
+      [pool.address]
+    )
     const loanAmount = expandTo18Decimals(1)
     const premiumAmount = bigNumberify('500000000000000')
     await token.transfer(receiver.address, premiumAmount)
     await token.transfer(pool.address, loanAmount)
-    await receiver.executeFlashLoan(pool.address, loanAmount)
+    await pool.flashLoan(receiver.address, loanAmount, data)
 
     const expectedLiquidity = expandTo18Decimals(1000)
     await pool.transfer(pool.address, expectedLiquidity.sub(MINIMUM_LIQUIDITY))
