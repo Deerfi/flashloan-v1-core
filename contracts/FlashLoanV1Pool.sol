@@ -2,15 +2,12 @@ pragma solidity =0.5.16;
 
 import './interfaces/IFlashLoanV1Pool.sol';
 import './FlashLoanV1ERC20.sol';
-import './libraries/Math.sol';
-import './libraries/UQ112x112.sol';
 import './interfaces/IERC20.sol';
 import './interfaces/IFlashLoanV1Factory.sol';
 import './interfaces/IFlashLoanReceiver.sol';
 
 contract FlashLoanV1Pool is IFlashLoanV1Pool, FlashLoanV1ERC20 {
     using SafeMath  for uint;
-    using UQ112x112 for uint224;
 
     uint public constant MINIMUM_LIQUIDITY = 10**3;
     bytes4 private constant SELECTOR = bytes4(keccak256(bytes('transfer(address,uint256)')));
@@ -18,7 +15,7 @@ contract FlashLoanV1Pool is IFlashLoanV1Pool, FlashLoanV1ERC20 {
     address public factory;
     address public token;
 
-    uint public reserve;            // uses single storage slot, accessible via getReserves
+    uint public reserve; // uses single storage slot, accessible via getReserves
 
     uint public kLast; // reserve, as of immediately after the most recent liquidity event
 
