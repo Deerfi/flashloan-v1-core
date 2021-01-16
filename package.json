@@ -1,18 +1,18 @@
 {
-  "name": "@uniswap/v2-core",
-  "description": "🎛 Core contracts for the UniswapV2 protocol",
+  "name": "@deerfi/v1-core",
+  "description": "🎛 Core contracts for the FlashLoanV1 protocol",
   "version": "1.0.1",
-  "homepage": "https://uniswap.org",
+  "homepage": "https://deerfi.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Uniswap/uniswap-v2-core"
+    "url": "https://github.com/Deerfi/flashloan-v1-core"
   },
   "keywords": [
-    "uniswap",
+    "deerfi",
     "ethereum",
-    "v2",
+    "v1",
     "core",
-    "uniswap-v2"
+    "flashloan-v1"
   ],
   "files": [
     "contracts",
