@@ -37,6 +37,7 @@ contract FlashLoanV1Factory is IFlashLoanV1Factory {
 
     function setFeeInBips(uint _feeInBips) external {
         require(msg.sender == feeToSetter, 'FlashLoanV1: FORBIDDEN');
+        require(_feeInBips > 0 && _feeInBips < 100, 'FlashLoanV1: INVALID_VALUE');
         feeInBips = _feeInBips;
     }
 
