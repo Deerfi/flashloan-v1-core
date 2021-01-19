@@ -30,7 +30,7 @@ interface IFlashLoanV1Pool {
         uint amount,
         uint premium
     );
-    event Sync(uint112 reserve);
+    event Sync(uint reserve);
 
     function MINIMUM_LIQUIDITY() external pure returns (uint);
     function factory() external view returns (address);

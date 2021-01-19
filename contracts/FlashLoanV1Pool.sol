@@ -56,7 +56,7 @@ contract FlashLoanV1Pool is IFlashLoanV1Pool, FlashLoanV1ERC20 {
     // update reserves and, on the first call per block, price accumulators
     function _update(uint balance) private {
         require(balance <= uint112(-1), 'FlashLoanV1: OVERFLOW');
-        reserve = uint112(balance);
+        reserve = balance;
         emit Sync(reserve);
     }
 
