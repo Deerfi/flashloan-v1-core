@@ -135,7 +135,7 @@ describe('FlashLoanV1Pool', () => {
     await mineBlock(provider, (await provider.getBlock('latest')).timestamp + 1)
     const tx = await pool.flashLoan(receiver.address, loanAmount, data)
     const receipt = await tx.wait()
-    expect(receipt.gasUsed).to.eq(69776)
+    expect(receipt.gasUsed).to.eq(69770)
   })
 
   it('burn', async () => {
