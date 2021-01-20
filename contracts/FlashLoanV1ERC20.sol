@@ -6,8 +6,8 @@ import './libraries/SafeMath.sol';
 contract FlashLoanV1ERC20 is IFlashLoanV1ERC20 {
     using SafeMath for uint;
 
-    string public constant name = 'FlashLoan V1';
-    string public constant symbol = 'FL-V1';
+    string public constant name = 'Deer FlashLoan V1';
+    string public constant symbol = 'DEER-V1';
     uint8 public constant decimals = 18;
     uint  public totalSupply;
     mapping(address => uint) public balanceOf;

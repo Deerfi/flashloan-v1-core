@@ -59,7 +59,7 @@ describe('FlashLoanV1Factory', () => {
   it('createPool:gas', async () => {
     const tx = await factory.createPool(TEST_ADDRESSES)
     const receipt = await tx.wait()
-    expect(receipt.gasUsed).to.eq(1952684)
+    expect(receipt.gasUsed).to.eq(1949464)
   })
 
   it('setFeeInBips', async () => {
